@@ -22,6 +22,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Set working directory – strip quotes and whitespace from the path
 if ($StartDir) {
     $StartDir = $StartDir.Trim().Trim('"').Trim("'")
+    # If a file was right-clicked, use its parent folder as target
+    if (Test-Path $StartDir -PathType Leaf) {
+        $StartDir = Split-Path -Parent $StartDir
+    }
     if (Test-Path $StartDir) {
         Set-Location $StartDir
     } else {
@@ -52,6 +56,11 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         Copy-Item -Path $CurrentLocation -Destination $FinalPath -Force
         Write-Host "Script copied to: $FinalPath" -ForegroundColor Cyan
 
+        # --- Remove old RepoFixer entries too (renamed project) ---
+        $OldEntries = @("Directory\\shell\\RepoFixer", "Directory\\Background\\shell\\RepoFixer", "*\\shell\\RepoFixer")
+        $HKCRClean = [Microsoft.Win32.Registry]::ClassesRoot
+        foreach ($OE in $OldEntries) { try { $HKCRClean.DeleteSubKeyTree($OE, $false) } catch {} }
+
         # --- Registry operations via .NET API ---
         # Microsoft.Win32.Registry handles the HKCR\* key directly,
         # without freezing like the PS provider or reg.exe.
@@ -62,8 +71,8 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         # Command for folder / folder background: StartDir = the folder itself
         $CmdFolder = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%1`""
         $CmdBg     = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%V`""
-        # Command for files: %~dp1. = parent folder of the file, resolved before PS starts
-        $CmdFile   = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%~dp1.`""
+        # Command for files: %1 = the file itself – the script extracts the parent folder on startup
+        $CmdFile   = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%1`""
 
         $RegEntries = @(
             @{ Hive = "Directory\shell\MotwCleaner";            Cmd = $CmdFolder },
@@ -100,7 +109,7 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         Write-Host "Installation successful!" -ForegroundColor Green
         Write-Host "Right-click menu now shows: 'Remove Lock (MotwCleaner)'" -ForegroundColor Green
         Write-Host "Press any key to exit..."
-        Pause
+        try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
         exit
     }
 }
@@ -135,7 +144,7 @@ foreach ($Blocked in $BlockedPaths) {
         Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
         Write-Host ""
         Write-Host "Press any key to exit..." -ForegroundColor Yellow
-        Pause
+        try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
         exit 1
     }
 }
@@ -157,8 +166,10 @@ foreach ($File in $Files) {
     Write-Progress -Activity "Removing locks..." -Status "$Counter / $Total - $($File.Name)" -PercentComplete $Percent
 
     try {
+        # Zone.Identifier stream meglétét Get-Item -Stream-mel ellenőrizzük
+        $WasLocked = $null -ne (Get-Item -Path $File.FullName -Stream "Zone.Identifier" -ErrorAction SilentlyContinue)
         Unblock-File -Path $File.FullName -ErrorAction Stop
-        $Unblocked++
+        if ($WasLocked) { $Unblocked++ }
     }
     catch {
         Write-Host "  [SKIP] $($File.FullName): $_" -ForegroundColor DarkYellow
@@ -174,4 +185,4 @@ Write-Host "  Unlocked : $Unblocked file(s)"
 Write-Host "  Skipped  : $Skipped file(s) (access denied or already unlocked)"
 Write-Host ""
 Write-Host "Press any key to close..." -ForegroundColor Yellow
-Pause
+try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
