@@ -22,6 +22,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Beállítjuk a munkakönyvtárat – idézőjeleket és szóközt trimmelünk az útvonalból
 if ($StartDir) {
     $StartDir = $StartDir.Trim().Trim('"').Trim("'")
+    # Ha fájlra kattintottak, a szülőmappát használjuk célként
+    if (Test-Path $StartDir -PathType Leaf) {
+        $StartDir = Split-Path -Parent $StartDir
+    }
     if (Test-Path $StartDir) {
         Set-Location $StartDir
     } else {
@@ -52,6 +56,13 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         Copy-Item -Path $CurrentLocation -Destination $FinalPath -Force
         Write-Host "Script masolva: $FinalPath" -ForegroundColor Cyan
 
+        # --- Régi RepoFixer bejegyzések törlése is (névváltás miatt) ---
+        $OldEntries = @("Directory\shell\RepoFixer", "Directory\Background\shell\RepoFixer", "*\shell\RepoFixer")
+        $HKCRClean = [Microsoft.Win32.Registry]::ClassesRoot
+        foreach ($OE in $OldEntries) {
+            try { $HKCRClean.DeleteSubKeyTree($OE, $false) } catch {}
+        }
+
         # --- Registry műveletek .NET API-val ---
         # A Microsoft.Win32.Registry közvetlenül kezeli a HKCR\* kulcsot,
         # nem fagy be mint a PS provider vagy a reg.exe.
@@ -62,8 +73,8 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         # Parancs mappára / mappa hátterére: StartDir = az adott mappa
         $CmdFolder = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%1`""
         $CmdBg     = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%V`""
-        # Parancs fájlra: %~dp1. = a fájl szülőmappája, még PS indítás előtt kiértékelve
-        $CmdFile   = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%~dp1.`""
+        # Parancs fájlra: %1 = maga a fájl – a script induláskor kinyeri a szülőmappát
+        $CmdFile   = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%1`""
 
         $RegEntries = @(
             @{ Hive = "Directory\shell\MotwCleaner";            Cmd = $CmdFolder },
@@ -100,7 +111,7 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         Write-Host "Telepites sikeres!" -ForegroundColor Green
         Write-Host "Jobb klikknel megjelenik: 'Zarolas Feloldasa (MotwCleaner)'" -ForegroundColor Green
         Write-Host "Nyomjon meg egy gombot a kilepeshez..."
-        Pause
+        try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
         exit
     }
 }
@@ -135,7 +146,7 @@ foreach ($Blocked in $BlockedPaths) {
         Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
         Write-Host ""
         Write-Host "Nyomjon meg egy gombot a kilepeshez..." -ForegroundColor Yellow
-        Pause
+        try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
         exit 1
     }
 }
@@ -157,8 +168,10 @@ foreach ($File in $Files) {
     Write-Progress -Activity "Zarolas feloldasa..." -Status "$Counter / $Total - $($File.Name)" -PercentComplete $Percent
 
     try {
+        # Zone.Identifier stream meglétét Get-Item -Stream-mel ellenőrizzük
+        $WasLocked = $null -ne (Get-Item -Path $File.FullName -Stream "Zone.Identifier" -ErrorAction SilentlyContinue)
         Unblock-File -Path $File.FullName -ErrorAction Stop
-        $Unblocked++
+        if ($WasLocked) { $Unblocked++ }
     }
     catch {
         Write-Host "  [SKIP] $($File.FullName): $_" -ForegroundColor DarkYellow
@@ -171,7 +184,7 @@ Write-Progress -Activity "Zarolas feloldasa..." -Completed
 Write-Host ""
 Write-Host "KESZ!" -ForegroundColor Green
 Write-Host "  Feloldva   : $Unblocked fajl"
-Write-Host "  Athugralva : $Skipped fajl (hozzaferes megtagadva vagy mar feloldva)"
+Write-Host "  Atugorva : $Skipped fajl (hozzaferes megtagadva vagy mar feloldva)"
 Write-Host ""
 Write-Host "Nyomjon meg egy gombot a bezarashoz..." -ForegroundColor Yellow
-Pause
+try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
