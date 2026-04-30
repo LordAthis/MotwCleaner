@@ -22,6 +22,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Définir le répertoire de travail – supprimer les guillemets et espaces du chemin
 if ($StartDir) {
     $StartDir = $StartDir.Trim().Trim('"').Trim("'")
+    # Si un fichier a été cliqué, utiliser son dossier parent comme cible
+    if (Test-Path $StartDir -PathType Leaf) {
+        $StartDir = Split-Path -Parent $StartDir
+    }
     if (Test-Path $StartDir) {
         Set-Location $StartDir
     } else {
@@ -52,6 +56,11 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         Copy-Item -Path $CurrentLocation -Destination $FinalPath -Force
         Write-Host "Script copie vers: $FinalPath" -ForegroundColor Cyan
 
+        # --- Supprimer aussi les anciennes entrées RepoFixer (renommage du projet) ---
+        $OldEntries = @("Directory\\shell\\RepoFixer", "Directory\\Background\\shell\\RepoFixer", "*\\shell\\RepoFixer")
+        $HKCRClean = [Microsoft.Win32.Registry]::ClassesRoot
+        foreach ($OE in $OldEntries) { try { $HKCRClean.DeleteSubKeyTree($OE, $false) } catch {} }
+
         # --- Opérations de registre via l'API .NET ---
         # Microsoft.Win32.Registry gère directement la clé HKCR\*,
         # sans blocage comme le fournisseur PS ou reg.exe.
@@ -62,8 +71,8 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         # Commande pour dossier / arrière-plan: StartDir = le dossier lui-même
         $CmdFolder = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%1`""
         $CmdBg     = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%V`""
-        # Commande pour fichiers: %~dp1. = dossier parent du fichier
-        $CmdFile   = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%~dp1.`""
+        # Commande pour fichiers: %1 = le fichier lui-même – le script extrait le dossier parent au démarrage
+        $CmdFile   = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%1`""
 
         $RegEntries = @(
             @{ Hive = "Directory\shell\MotwCleaner";            Cmd = $CmdFolder },
@@ -100,7 +109,7 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         Write-Host "Installation reussie!" -ForegroundColor Green
         Write-Host "Le menu contextuel affiche maintenant: 'Supprimer le verrou (MotwCleaner)'" -ForegroundColor Green
         Write-Host "Appuyez sur une touche pour quitter..."
-        Pause
+        try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
         exit
     }
 }
@@ -135,7 +144,7 @@ foreach ($Blocked in $BlockedPaths) {
         Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
         Write-Host ""
         Write-Host "Appuyez sur une touche pour quitter..." -ForegroundColor Yellow
-        Pause
+        try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
         exit 1
     }
 }
@@ -157,8 +166,10 @@ foreach ($File in $Files) {
     Write-Progress -Activity "Suppression des verrous..." -Status "$Counter / $Total - $($File.Name)" -PercentComplete $Percent
 
     try {
+        # Zone.Identifier stream meglétét Get-Item -Stream-mel ellenőrizzük
+        $WasLocked = $null -ne (Get-Item -Path $File.FullName -Stream "Zone.Identifier" -ErrorAction SilentlyContinue)
         Unblock-File -Path $File.FullName -ErrorAction Stop
-        $Unblocked++
+        if ($WasLocked) { $Unblocked++ }
     }
     catch {
         Write-Host "  [SKIP] $($File.FullName): $_" -ForegroundColor DarkYellow
@@ -174,4 +185,4 @@ Write-Host "  Déverrouillé : $Unblocked fichier(s)"
 Write-Host "  Ignoré       : $Skipped fichier(s) (accès refusé ou déjà déverrouillé)"
 Write-Host ""
 Write-Host "Appuyez sur une touche pour fermer..." -ForegroundColor Yellow
-Pause
+try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
