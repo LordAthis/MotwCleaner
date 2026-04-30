@@ -13,7 +13,6 @@
 
 --------------------------------
 
-# MotwCleaner
 
 ## 🇭🇺 Magyar leírás
 A Windows az internetről letöltött fájlokra egy láthatatlan **"Mark of the Web" (MOTW)** jelzést tesz. Ez a biztonsági funkció gyakran megakadályozza a scriptek futtatását vagy a dokumentumok megnyitását. A **MotwCleaner** egy PowerShell eszköz, amely rekurzívan (minden almappában) eltávolítja ezt a korlátozást.
