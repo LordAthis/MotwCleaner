@@ -21,17 +21,17 @@ A Windows az internetről letöltött fájlokra egy láthatatlan **"Mark of the 
 ## 🇺🇸 English Description
 Windows applies a hidden **"Mark of the Web" (MOTW)** tag to files downloaded from the internet. This often prevents scripts from running or documents from opening correctly. **MotwCleaner** is a PowerShell utility designed to recursively remove these locks.
 
----
+--------------------------------
 
 ## 🇩🇪 Deutsche Beschreibung
 Windows versieht aus dem Internet heruntergeladene Dateien mit einer versteckten Kennzeichnung namens **"Mark of the Web" (MOTW)**. Dies verhindert oft das Ausführen von Skripten oder das Öffnen von Dokumenten. **MotwCleaner** ist ein PowerShell-Tool, das diese Sperren rekursiv aufhebt.
 
----
+--------------------------------
 
 ## 🇫🇷 Description Française
 Windows applique une étiquette invisible **"Mark of the Web" (MOTW)** aux fichiers téléchargés sur Internet. Cela empêche souvent l'exécution de scripts ou l'ouverture de documents. **MotwCleaner** est un outil PowerShell conçu pour supprimer ces blocages de manière récursive.
 
----
+--------------------------------
 
 ## 🛠 Telepítés / Installation
 
@@ -40,7 +40,7 @@ Windows applique une étiquette invisible **"Mark of the Web" (MOTW)** aux fichi
 3. Nyomj **'i'** (igen) gombot a telepítéshez.
 4. Használd a jobb klikk: **"Zárolás Feloldása (MotwCleaner)"** opciót bárhol az Intézőben.
 
----
+--------------------------------
 
 ## ⚙️ Technikai részletek / Technical Details
 
@@ -62,7 +62,7 @@ A script három különböző környezetben működik, amihez eltérő Windows v
 ### 3. Biztonság (Safety Guard)
 A script tartalmaz egy beépített tiltólistát (`BlockedPaths`). Ha a célútvonal megegyezik vagy része egy kritikus rendszermappának (pl. `C:\Windows`, `C:\Program Files`), a futás azonnal leáll, megelőzve a rendszerfájlok véletlen módosítását.
 
----
+--------------------------------
 
 **Enjoy!** 🚀
 
