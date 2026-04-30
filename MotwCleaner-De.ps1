@@ -22,6 +22,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Arbeitsverzeichnis setzen – Anführungszeichen und Leerzeichen aus dem Pfad entfernen
 if ($StartDir) {
     $StartDir = $StartDir.Trim().Trim('"').Trim("'")
+    # Falls auf eine Datei geklickt wurde, den übergeordneten Ordner als Ziel verwenden
+    if (Test-Path $StartDir -PathType Leaf) {
+        $StartDir = Split-Path -Parent $StartDir
+    }
     if (Test-Path $StartDir) {
         Set-Location $StartDir
     } else {
@@ -52,6 +56,11 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         Copy-Item -Path $CurrentLocation -Destination $FinalPath -Force
         Write-Host "Skript kopiert nach: $FinalPath" -ForegroundColor Cyan
 
+        # --- Alte RepoFixer-Einträge ebenfalls entfernen (Projektumbenennung) ---
+        $OldEntries = @("Directory\\shell\\RepoFixer", "Directory\\Background\\shell\\RepoFixer", "*\\shell\\RepoFixer")
+        $HKCRClean = [Microsoft.Win32.Registry]::ClassesRoot
+        foreach ($OE in $OldEntries) { try { $HKCRClean.DeleteSubKeyTree($OE, $false) } catch {} }
+
         # --- Registry-Operationen über .NET API ---
         # Microsoft.Win32.Registry behandelt den HKCR\* Schlüssel direkt,
         # ohne wie der PS-Provider oder reg.exe einzufrieren.
@@ -62,8 +71,8 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         # Befehl für Ordner / Ordnerhintergrund: StartDir = der Ordner selbst
         $CmdFolder = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%1`""
         $CmdBg     = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%V`""
-        # Befehl für Dateien: %~dp1. = übergeordneter Ordner der Datei
-        $CmdFile   = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%~dp1.`""
+        # Befehl für Dateien: %1 = die Datei selbst – das Skript ermittelt den übergeordneten Ordner beim Start
+        $CmdFile   = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$FinalPath`" -StartDir `"%1`""
 
         $RegEntries = @(
             @{ Hive = "Directory\shell\MotwCleaner";            Cmd = $CmdFolder },
@@ -100,7 +109,7 @@ if (-not ($CurrentLocation.StartsWith($TargetDir, [System.StringComparison]::Ord
         Write-Host "Installation erfolgreich!" -ForegroundColor Green
         Write-Host "Rechtsklick-Menue zeigt jetzt: 'Sperre aufheben (MotwCleaner)'" -ForegroundColor Green
         Write-Host "Beliebige Taste zum Beenden druecken..."
-        Pause
+        try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
         exit
     }
 }
@@ -135,7 +144,7 @@ foreach ($Blocked in $BlockedPaths) {
         Write-Host "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" -ForegroundColor Red
         Write-Host ""
         Write-Host "Beliebige Taste zum Beenden druecken..." -ForegroundColor Yellow
-        Pause
+        try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
         exit 1
     }
 }
@@ -157,8 +166,10 @@ foreach ($File in $Files) {
     Write-Progress -Activity "Sperren werden aufgehoben..." -Status "$Counter / $Total - $($File.Name)" -PercentComplete $Percent
 
     try {
+        # Zone.Identifier stream meglétét Get-Item -Stream-mel ellenőrizzük
+        $WasLocked = $null -ne (Get-Item -Path $File.FullName -Stream "Zone.Identifier" -ErrorAction SilentlyContinue)
         Unblock-File -Path $File.FullName -ErrorAction Stop
-        $Unblocked++
+        if ($WasLocked) { $Unblocked++ }
     }
     catch {
         Write-Host "  [SKIP] $($File.FullName): $_" -ForegroundColor DarkYellow
@@ -174,4 +185,4 @@ Write-Host "  Entsperrt  : $Unblocked Datei(en)"
 Write-Host "  Uebersprungen : $Skipped Datei(en) (Zugriff verweigert oder bereits entsperrt)"
 Write-Host ""
 Write-Host "Beliebige Taste zum Schliessen druecken..." -ForegroundColor Yellow
-Pause
+try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host }
